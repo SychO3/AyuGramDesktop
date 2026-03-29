@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/translate_box_content.h"
 #include "lang/translate_provider.h"
 
+#include "api/api_text_entities.h"
 #include "core/application.h"
 #include "core/core_settings.h"
 #include "core/ui_integration.h"
@@ -20,11 +21,22 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "spellcheck/platform/platform_language.h"
 #include "ui/boxes/choose_language_box.h"
+#include "ui/effects/loading_element.h"
 #include "ui/layers/generic_box.h"
-#include "ui/widgets/multi_select.h"
 #include "ui/text/text_utilities.h"
+#include "ui/vertical_list.h"
+#include "ui/painter.h"
+#include "ui/power_saving.h"
+#include "ui/widgets/buttons.h"
+#include "ui/widgets/labels.h"
+#include "ui/widgets/multi_select.h"
+#include "ui/wrap/fade_wrap.h"
+#include "ui/wrap/slide_wrap.h"
+#include "styles/style_boxes.h"
+#include "styles/style_chat_helpers.h"
+#include "styles/style_info.h"
+#include "styles/style_layers.h"
 
-// AyuGram includes
 #include "ayu/features/translator/ayu_translator.h"
 
 
@@ -32,6 +44,55 @@ namespace Ui {
 namespace {
 
 constexpr auto kSkipAtLeastOneDuration = 3 * crl::time(1000);
+
+class ShowButton final : public RpWidget {
+public:
+	ShowButton(not_null<Ui::RpWidget*> parent);
+
+	[[nodiscard]] rpl::producer<Qt::MouseButton> clicks() const;
+
+protected:
+	void paintEvent(QPaintEvent *e) override;
+
+private:
+	LinkButton _button;
+
+};
+
+ShowButton::ShowButton(not_null<Ui::RpWidget*> parent)
+: RpWidget(parent)
+, _button(this, tr::lng_usernames_activate_confirm(tr::now)) {
+	_button.sizeValue(
+	) | rpl::on_next([=](const QSize &s) {
+		resize(
+			s.width() + st::defaultEmojiSuggestions.fadeRight.width(),
+			s.height());
+		_button.moveToRight(0, 0);
+	}, lifetime());
+	_button.show();
+}
+
+rpl::producer<Qt::MouseButton> ShowButton::clicks() const {
+	return _button.clicks();
+}
+
+void ShowButton::paintEvent(QPaintEvent *e) {
+	auto p = QPainter(this);
+	const auto clip = e->rect();
+	const auto &icon = st::defaultEmojiSuggestions.fadeRight;
+	const auto iconw = icon.width();
+	if (clip.x() < iconw) {
+		icon.fill(p, QRect(0, 0, iconw, height()));
+	}
+	if (clip.x() + clip.width() > iconw) {
+		p.fillRect(
+			clip.x(),
+			clip.y(),
+			clip.width(),
+			clip.height(),
+			st::boxBg);
+	}
+}
 
 } // namespace
 
@@ -51,6 +112,7 @@ void TranslateBox(
 	};
 	const auto state = box->lifetime().make_state<State>(&peer->session());
 	state->to = ChooseTranslateTo(peer->owner().history(peer));
+	const auto container = box->verticalLayout();
 	const auto request = std::make_shared<TranslateProviderRequest>(
 		PrepareTranslateProviderRequest(
 			state->provider.get(),

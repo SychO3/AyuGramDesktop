@@ -210,7 +210,6 @@ void sendMedia(
 			session,
 			group,
 			mediaType,
-			std::move(message.textWithTags),
 			message.action);
 	}
 }
@@ -423,7 +422,6 @@ void forwardMessages(
 			auto bundle = Ui::PrepareFilesBundle(
 				std::move(groups),
 				way,
-				message.textWithTags,
 				false);
 			sendMedia(session, bundle, media, std::move(message), way.sendImagesAsPhotos());
 		}

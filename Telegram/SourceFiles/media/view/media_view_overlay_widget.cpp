@@ -142,6 +142,7 @@ constexpr auto kMaxZoomLevel = 7; // x8
 constexpr auto kZoomToScreenLevel = 1024;
 constexpr auto kOverlayLoaderPriority = 2;
 constexpr auto kSeekTimeMs = 5 * crl::time(1000);
+constexpr auto kVolumeStep = 0.1;
 
 // macOS OpenGL renderer fails to render larger texture
 // even though it reports that max texture size is 16384.
