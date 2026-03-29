@@ -195,11 +195,20 @@ QString PluralCodeForCustom(
 	return DefaultLanguageId();
 }
 
+void LogUnknownKeys(const QStringList &unknownKeys) {
+	if (!unknownKeys.isEmpty()) {
+		DEBUG_LOG(("Lang Warning: %1 unknown key(s), first 10: %2"
+			).arg(unknownKeys.size()
+			).arg(unknownKeys.mid(0, 10).join(u", "_q)));
+	}
+}
+
 template <typename Save>
 void ParseKeyValue(
 		const QByteArray &key,
 		const QByteArray &value,
-		Save &&save) {
+		Save &&save,
+		QStringList *unknownKeys = nullptr) {
 	const auto index = GetKeyIndex(QLatin1String(key));
 	if (index != kKeysCount) {
 		ValueParser parser(key, index, value);
@@ -207,8 +216,12 @@ void ParseKeyValue(
 			save(index, parser.takeResult());
 		}
 	} else if (!key.startsWith("cloud_")) {
-		DEBUG_LOG(("Lang Warning: Unknown key '%1'"
-			).arg(QString::fromLatin1(key)));
+		if (unknownKeys) {
+			unknownKeys->push_back(QString::fromLatin1(key));
+		} else {
+			DEBUG_LOG(("Lang Warning: Unknown key '%1'"
+				).arg(QString::fromLatin1(key)));
+		}
 	}
 }
 
@@ -539,9 +552,11 @@ void Instance::fillFromSerialized(
 	_customFilePathRelative = customFilePathRelative;
 	_customFileContent = customFileContent;
 	LOG(("Lang Info: Loaded cached, keys: %1").arg(nonDefaultValuesCount));
+	auto unknownKeys = QStringList();
 	for (auto i = 0, count = nonDefaultValuesCount * 2; i != count; i += 2) {
-		applyValue(nonDefaultStrings[i], nonDefaultStrings[i + 1]);
+		applyValue(nonDefaultStrings[i], nonDefaultStrings[i + 1], &unknownKeys);
 	}
+	LogUnknownKeys(unknownKeys);
 	updatePluralRules();
 	updateChoosingStickerReplacement();
 
@@ -549,9 +564,11 @@ void Instance::fillFromSerialized(
 }
 
 void Instance::loadFromContent(const QByteArray &content) {
-	Lang::FileParser loader(content, [this](QLatin1String key, const QByteArray &value) {
-		applyValue(QByteArray(key.data(), key.size()), value);
+	auto unknownKeys = QStringList();
+	Lang::FileParser loader(content, [&](QLatin1String key, const QByteArray &value) {
+		applyValue(QByteArray(key.data(), key.size()), value, &unknownKeys);
 	});
+	LogUnknownKeys(unknownKeys);
 	if (!loader.errors().isEmpty()) {
 		LOG(("Lang load errors: %1").arg(loader.errors()));
 	} else if (!loader.warnings().isEmpty()) {
@@ -685,13 +702,15 @@ void Instance::applyDifferenceToMe(
 	Expects(difference.vfrom_version().v <= _version);
 
 	_version = difference.vversion().v;
+	auto unknownKeys = QStringList();
 	for (const auto &string : difference.vstrings().v) {
 		HandleString(string, [&](auto &&key, auto &&value) {
-			applyValue(key, value);
+			applyValue(key, value, &unknownKeys);
 		}, [&](auto &&key) {
 			resetValue(key);
 		});
 	}
+	LogUnknownKeys(unknownKeys);
 	if (!_derived) {
 		_updated.fire({});
 	} else {
@@ -702,11 +721,12 @@ void Instance::applyDifferenceToMe(
 std::map<ushort, QString> Instance::ParseStrings(
 		const MTPVector<MTPLangPackString> &strings) {
 	auto result = std::map<ushort, QString>();
+	auto unknownKeys = QStringList();
 	for (const auto &string : strings.v) {
 		HandleString(string, [&](auto &&key, auto &&value) {
 			ParseKeyValue(key, value, [&](ushort key, QString &&value) {
 				result[key] = std::move(value);
-			});
+			}, &unknownKeys);
 		}, [&](auto &&key) {
 			auto keyIndex = GetKeyIndex(QLatin1String(key));
 			if (keyIndex != kKeysCount) {
@@ -714,6 +734,7 @@ std::map<ushort, QString> Instance::ParseStrings(
 			}
 		});
 	}
+	LogUnknownKeys(unknownKeys);
 	return result;
 }
 
@@ -726,7 +747,10 @@ QString Instance::getNonDefaultValue(const QByteArray &key) const {
 		: QString();
 }
 
-void Instance::applyValue(const QByteArray &key, const QByteArray &value) {
+void Instance::applyValue(
+		const QByteArray &key,
+		const QByteArray &value,
+		QStringList *unknownKeys) {
 	_nonDefaultValues[key] = value;
 	ParseKeyValue(key, value, [&](ushort key, QString &&value) {
 		_nonDefaultSet[key] = 1;
@@ -743,7 +767,7 @@ void Instance::applyValue(const QByteArray &key, const QByteArray &value) {
 				_derived->updateChoosingStickerReplacement();
 			}
 		}
-	});
+	}, unknownKeys);
 }
 
 void Instance::updatePluralRules() {

@@ -267,9 +267,15 @@ Session::Session(
 	}, [=] {
 		local().readInstalledCustomEmoji();
 	}, [=] {
+		auto timer = crl::now();
 		local().readFeaturedStickers();
+		DEBUG_LOG(("Startup Timing: readFeaturedStickers took %1ms"
+			).arg(crl::now() - timer));
 	}, [=] {
+		auto timer = crl::now();
 		local().readFeaturedCustomEmoji();
+		DEBUG_LOG(("Startup Timing: readFeaturedCustomEmoji took %1ms"
+			).arg(crl::now() - timer));
 	}, [=] {
 		local().readRecentStickers();
 		local().readRecentMasks();

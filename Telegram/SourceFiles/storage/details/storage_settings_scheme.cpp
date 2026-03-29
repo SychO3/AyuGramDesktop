@@ -50,7 +50,7 @@ bool ReadSetting(
 		stream >> dcId >> host >> ip >> port;
 		if (!CheckStreamStatus(stream)) return false;
 
-		context.fallbackConfigLegacyDcOptions.constructAddOne(
+		context.ensureFallbackDcOptions().constructAddOne(
 			dcId,
 			0,
 			ip.toStdString(),
@@ -66,7 +66,7 @@ bool ReadSetting(
 		stream >> dcIdWithShift >> flags >> ip >> port;
 		if (!CheckStreamStatus(stream)) return false;
 
-		context.fallbackConfigLegacyDcOptions.constructAddOne(
+		context.ensureFallbackDcOptions().constructAddOne(
 			dcIdWithShift,
 			MTPDdcOption::Flags::from_raw(flags),
 			ip.toStdString(),
@@ -80,7 +80,7 @@ bool ReadSetting(
 		stream >> serialized;
 		if (!CheckStreamStatus(stream)) return false;
 
-		context.fallbackConfigLegacyDcOptions.constructFromSerialized(
+		context.ensureFallbackDcOptions().constructFromSerialized(
 			serialized);
 		context.legacyRead = true;
 	} break;
@@ -1175,8 +1175,10 @@ bool ReadSetting(
 void ApplyReadFallbackConfig(ReadSettingsContext &context) {
 	if (context.fallbackConfig.isEmpty()) {
 		auto &config = Core::App().fallbackProductionConfig();
-		config.dcOptions().addFromOther(
-			std::move(context.fallbackConfigLegacyDcOptions));
+		if (context.fallbackConfigLegacyDcOptions) {
+			config.dcOptions().addFromOther(
+				std::move(*context.fallbackConfigLegacyDcOptions));
+		}
 		if (context.fallbackConfigLegacyChatSizeMax > 0) {
 			config.setChatSizeMax(context.fallbackConfigLegacyChatSizeMax);
 		}

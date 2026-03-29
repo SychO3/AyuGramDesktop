@@ -130,6 +130,9 @@ private:
 	base::Timer _detachFromDeviceTimer;
 	bool _detachFromDeviceForce = false;
 
+	base::Timer _deviceChangeDebounceTimer;
+	Webrtc::DeviceResolvedId _pendingDeviceId;
+
 	rpl::lifetime _lifetime;
 
 };

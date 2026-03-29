@@ -297,12 +297,26 @@ void Application::run() {
 	Ui::Accessible::Init();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();
+
+	auto initTimer = crl::now();
 	Ui::Emoji::Init();
+	DEBUG_LOG(("Startup Timing: Ui::Emoji::Init took %1ms"
+		).arg(crl::now() - initTimer));
+
 	Ui::PreloadTextSpoilerMask();
 	startShortcuts();
+
+	initTimer = crl::now();
 	startEmojiImageLoader();
+	DEBUG_LOG(("Startup Timing: startEmojiImageLoader took %1ms"
+		).arg(crl::now() - initTimer));
+
 	startSystemDarkModeViewer();
+
+	initTimer = crl::now();
 	Media::Player::start(_audio.get());
+	DEBUG_LOG(("Startup Timing: Media::Player::start took %1ms"
+		).arg(crl::now() - initTimer));
 
 	if (MediaControlsManager::Supported()) {
 		_mediaControlsManager = std::make_unique<MediaControlsManager>();

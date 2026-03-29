@@ -1509,6 +1509,15 @@ bool Instance::Private::onErrorDefault(
 			}
 		} else if (m1.hasMatch()) {
 			secs = m1.captured(1).toInt();
+			if (const auto request = getRequest(requestId)) {
+				const auto methodId = mtpTypeId(
+					(*request)[SerializedRequest::kMessageBodyPosition]);
+				DEBUG_LOG(("RPC Info: FLOOD_WAIT_%1 for request %2"
+					" (method: 0x%3)"
+					).arg(secs
+					).arg(requestId
+					).arg(QString::number(methodId, 16)));
+			}
 //			if (secs >= 60) return false;
 		} else if (m2.hasMatch()) {
 			secs = m2.captured(1).toInt();

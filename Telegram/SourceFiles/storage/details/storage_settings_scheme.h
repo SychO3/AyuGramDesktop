@@ -27,12 +27,19 @@ struct ReadSettingsContext {
 		return *sessionSettingsStorage;
 	}
 
+	[[nodiscard]] MTP::DcOptions &ensureFallbackDcOptions() {
+		if (!fallbackConfigLegacyDcOptions) {
+			fallbackConfigLegacyDcOptions.emplace(
+				MTP::Environment::Production);
+		}
+		return *fallbackConfigLegacyDcOptions;
+	}
+
 	// This field is read in ReadSetting.
 	bool legacyHasCustomDayBackground = false;
 
 	// Those fields are written in ReadSetting.
-	MTP::DcOptions fallbackConfigLegacyDcOptions
-		= MTP::DcOptions(MTP::Environment::Production);
+	std::optional<MTP::DcOptions> fallbackConfigLegacyDcOptions;
 	qint32 fallbackConfigLegacyChatSizeMax = 0;
 	qint32 fallbackConfigLegacySavedGifsLimit = 0;
 	qint32 fallbackConfigLegacyStickersRecentLimit = 0;

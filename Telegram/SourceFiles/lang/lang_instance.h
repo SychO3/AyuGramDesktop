@@ -106,7 +106,10 @@ public:
 	}
 
 	void resetValue(const QByteArray &key);
-	void applyValue(const QByteArray &key, const QByteArray &value);
+	void applyValue(
+		const QByteArray &key,
+		const QByteArray &value,
+		QStringList *unknownKeys = nullptr);
 	void updatePluralRules();
 
 private:

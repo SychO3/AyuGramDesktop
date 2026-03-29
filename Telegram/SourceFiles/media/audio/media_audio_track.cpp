@@ -277,11 +277,20 @@ Instance::Instance()
 		Player::internal::DetachFromDevice(this);
 	});
 
-	_playbackDeviceId.changes(
-	) | rpl::on_next([=](Webrtc::DeviceResolvedId id) {
-		if (Player::internal::DetachIfDeviceChanged(this, id)) {
+	_deviceChangeDebounceTimer.setCallback([=] {
+		if (Player::internal::DetachIfDeviceChanged(
+				this,
+				_pendingDeviceId)) {
 			_detachFromDeviceForce = false;
 		}
+	});
+
+	_playbackDeviceId.changes(
+	) | rpl::on_next([=](Webrtc::DeviceResolvedId id) {
+		_pendingDeviceId = id;
+		crl::on_main([=] {
+			_deviceChangeDebounceTimer.callOnce(500);
+		});
 	}, _lifetime);
 }
 
