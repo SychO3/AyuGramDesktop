@@ -67,6 +67,8 @@ public:
 	[[nodiscard]] bool hasMenu() const;
 	[[nodiscard]] bool dragging() const;
 
+	void updateVolumeDisplay();
+
 protected:
 	void resizeEvent(QResizeEvent *e) override;
 	void paintEvent(QPaintEvent *e) override;

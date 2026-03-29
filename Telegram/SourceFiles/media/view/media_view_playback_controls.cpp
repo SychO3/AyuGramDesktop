@@ -256,6 +256,11 @@ void PlaybackControls::updateVolumeToggleIcon() {
 	}());
 }
 
+void PlaybackControls::updateVolumeDisplay() {
+	_volumeController->setValue(_delegate->playbackControlsCurrentVolume());
+	updateVolumeToggleIcon();
+}
+
 float64 PlaybackControls::countDownloadedTillPercent(
 		const Player::TrackState &state) const {
 	if (_loadingReady > 0 && _loadingReady == _loadingTotal) {

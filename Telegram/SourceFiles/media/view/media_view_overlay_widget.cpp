@@ -5874,13 +5874,13 @@ void OverlayWidget::handleKeyPress(not_null<QKeyEvent*> e) {
 	const auto key = e->key();
 	const auto modifiers = e->modifiers();
 	const auto ctrl = modifiers.testFlag(Qt::ControlModifier);
+	const auto shift = modifiers.testFlag(Qt::ShiftModifier);
 	if (_stories) {
 		if (key == Qt::Key_Space && _down != Over::Video) {
 			_stories->togglePaused(!_stories->paused());
 			return;
 		}
 	} else if (_streamed) {
-		// Ctrl + F for full screen toggle is in eventFilter().
 		const auto toggleFull = (modifiers.testFlag(Qt::AltModifier) || ctrl)
 			&& (key == Qt::Key_Enter || key == Qt::Key_Return);
 		if (toggleFull) {
@@ -5889,25 +5889,48 @@ void OverlayWidget::handleKeyPress(not_null<QKeyEvent*> e) {
 		} else if (key == Qt::Key_Space) {
 			playbackPauseResume();
 			return;
-		} else if (_fullScreenVideo) {
-			if (key == Qt::Key_Escape) {
-				playbackToggleFullScreen();
-			} else if (ctrl) {
+		} else if (key == Qt::Key_Escape && _fullScreenVideo) {
+			playbackToggleFullScreen();
+			return;
+		} else if (!ctrl && !shift) {
+			if (key == Qt::Key_Up || key == Qt::Key_Down) {
+				const auto current = playbackControlsCurrentVolume();
+				const auto delta = (key == Qt::Key_Up)
+					? kVolumeStep
+					: -kVolumeStep;
+				const auto next = std::clamp(current + delta, 0., 1.);
+				playbackControlsVolumeChanged(next);
+				playbackControlsVolumeChangeFinished();
+				if (_streamed->controls) {
+					_streamed->controls->updateVolumeDisplay();
+				}
+				return;
 			} else if (key == Qt::Key_0) {
 				activateControls();
 				restartAtSeekPosition(0);
+				return;
 			} else if (key >= Qt::Key_1 && key <= Qt::Key_9) {
 				activateControls();
 				const auto index = int(key - Qt::Key_0);
 				restartAtProgress(index / 10.0);
+				return;
 			} else if (key == Qt::Key_Left) {
 				activateControls();
 				seekRelativeTime(-kSeekTimeMs);
+				return;
 			} else if (key == Qt::Key_Right) {
 				activateControls();
 				seekRelativeTime(kSeekTimeMs);
+				return;
 			}
-			return;
+		} else if (shift && !ctrl) {
+			if (key == Qt::Key_Left || key == Qt::Key_Right) {
+				if (_controlsHideTimer.isActive()) {
+					activateControls();
+				}
+				moveToNext((key == Qt::Key_Left) ? -1 : 1);
+				return;
+			}
 		}
 	}
 	if (!_menu && key == Qt::Key_Escape) {
