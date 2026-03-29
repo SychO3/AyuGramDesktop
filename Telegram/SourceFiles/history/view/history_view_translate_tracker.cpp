@@ -8,7 +8,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_translate_tracker.h"
 
 #include "apiwrap.h"
-#include "api/api_text_entities.h"
 #include "api/api_transcribes.h"
 #include "core/application.h"
 #include "core/core_settings.h"
@@ -21,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item.h"
 #include "history/history_item_components.h"
 #include "history/view/history_view_element.h"
+#include "lang/translate_provider.h"
 #include "main/main_session.h"
 #include "spellcheck/platform/platform_language.h"
 
@@ -41,6 +41,7 @@ constexpr auto kRequestCountLimit = 20;
 
 TranslateTracker::TranslateTracker(not_null<History*> history)
 : _history(history)
+, _provider(Ui::CreateTranslateProvider(&_history->session()))
 , _limit(kEnoughForRecognition) {
 	setup();
 }
@@ -236,7 +237,7 @@ void TranslateTracker::cancelToRequest() {
 }
 
 void TranslateTracker::cancelSentRequest() {
-	if (_requestId) {
+	if (_requestInProcess) {
 		const auto owner = &_history->owner();
 		for (const auto &id : base::take(_requested)) {
 			if (const auto item = owner->message(id)) {
@@ -248,7 +249,7 @@ void TranslateTracker::cancelSentRequest() {
 }
 
 void TranslateTracker::requestSome() {
-	if (_requestId || _itemsToRequest.empty()) {
+	if (_requestInProcess || _itemsToRequest.empty()) {
 		return;
 	}
 	const auto to = _history->translatedTo();
@@ -260,21 +261,15 @@ void TranslateTracker::requestSome() {
 	_requested.reserve(_itemsToRequest.size());
 	const auto session = &_history->session();
 	const auto peerId = _itemsToRequest.back().first.peer;
-	auto peer = (peerId == _history->peer->id)
-		? _history->peer
-		: session->data().peer(peerId);
 	auto length = 0;
-	auto list = QVector<MTPint>();
-	list.reserve(_itemsToRequest.size());
 	for (auto i = _itemsToRequest.end(); i != _itemsToRequest.begin();) {
 		if ((--i)->first.peer != peerId) {
 			break;
 		}
 		length += i->second.length;
 		_requested.push_back(i->first);
-		list.push_back(MTP_int(i->first.msg));
 		i = _itemsToRequest.erase(i);
-		if (list.size() >= kRequestCountLimit
+		if (_requested.size() >= kRequestCountLimit
 			|| length >= kRequestLengthLimit) {
 			break;
 		}
@@ -313,7 +308,7 @@ void TranslateTracker::requestDone(
 		}
 		++index;
 	}
-	_requestId = 0;
+	_requestInProcess = false;
 	requestSome();
 }
 
