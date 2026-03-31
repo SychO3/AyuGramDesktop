@@ -1204,7 +1204,22 @@ Element::Element(
 		}
 	}
 	if (replacing && replacing->_deletedOpacityAnimation.animating()) {
-		_deletedOpacityAnimation = replacing->takeDeletedAnimation();
+		// Take the current animation value, then restart with our own
+		// weak pointer, because the moved callback still captures the
+		// old Element's `this` which will become dangling.
+		const auto remaining = replacing->_deletedOpacityAnimation.value(0.7);
+		replacing->_deletedOpacityAnimation.stop();
+		const auto weak = base::make_weak(this);
+		_deletedOpacityAnimation.start(
+			[weak] {
+				if (const auto strong = weak.get()) {
+					strong->repaint();
+				}
+			},
+			remaining,
+			0.7,
+			500,
+			anim::easeOutCubic);
 	} else if (data->isDeleted() && data->wasDeletedAnimated()) {
 		// grouped messages handle it per-item
 		if (!history()->owner().groups().find(data)) {
@@ -1375,8 +1390,13 @@ float64 Element::deletedOpacity() const {
 }
 
 void Element::startDeletedAnimation() {
+	const auto weak = base::make_weak(this);
 	_deletedOpacityAnimation.start(
-		[=] { repaint(); },
+		[weak] {
+			if (const auto strong = weak.get()) {
+				strong->repaint();
+			}
+		},
 		1.,
 		0.7,
 		500,
@@ -2978,6 +2998,10 @@ QRect Element::effectIconGeometry() const {
 }
 
 Element::~Element() {
+	// Stop the deleted-message opacity animation before anything else,
+	// so its repaint() callback won't fire on a half-destroyed Element.
+	_deletedOpacityAnimation.stop();
+
 	setReactions(nullptr);
 
 	// Delete media while owner still exists.
