@@ -606,6 +606,8 @@ private:
 	[[nodiscard]] HistoryView::ElementOverlayHost &ensureOverlayHost();
 	std::unique_ptr<HistoryView::ElementOverlayHost> _overlayHost;
 
+	bool _wasForceClickPreview = false;
+
 };
 
 [[nodiscard]] bool CanSendReply(not_null<const HistoryItem*> item);

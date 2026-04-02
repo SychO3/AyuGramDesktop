@@ -2408,6 +2408,10 @@ void HistoryInner::mouseReleaseEvent(QMouseEvent *e) {
 		return;
 	}
 	registerReadMetricsActivity();
+	if (_wasForceClickPreview) {
+		_wasForceClickPreview = false;
+		return;
+	}
 	mouseActionFinish(e->globalPos(), e->button());
 	if (!rect().contains(e->pos())) {
 		leaveEvent(e);
