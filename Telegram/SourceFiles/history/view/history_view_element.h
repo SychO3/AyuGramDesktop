@@ -766,6 +766,7 @@ private:
 	virtual void invalidateTextDependentCache() {
 	}
 
+	void refreshDeletedAnimationTarget();
 	void refreshMedia(Element *replacing);
 	void invalidateTextSizeCache();
 	void setTextWithLinks(
@@ -798,6 +799,7 @@ private:
 	Context _context = Context();
 
 	mutable Ui::Animations::Simple _deletedOpacityAnimation;
+	mutable std::shared_ptr<base::weak_ptr<Element>> _deletedOpacityAnimationTarget;
 
 };
 
