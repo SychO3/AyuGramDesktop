@@ -905,9 +905,9 @@ MTPMessageReplyHeader NewMessageReplyHeader(const Api::SendAction &action) {
 			? PeerId()
 			: replyTo.messageId.peer;
 		const auto replyToTop = LookupReplyToTop(action.history, replyTo);
-		const auto quoteNormalized = reverseLocalPremiumEmoji(replyTo.quote, action.history, true);
 		const auto topicPost = replyTo.topicRootId
 			&& (replyTo.topicRootId != Data::ForumTopic::kGeneralId);
+		const auto quoteNormalized = reverseLocalPremiumEmoji(replyTo.quote, action.history, true);
 		auto quoteEntities = Api::EntitiesToMTP(
 			&action.history->session(),
 			quoteNormalized.entities,
@@ -1193,17 +1193,17 @@ void CheckReactionNotificationSchedule(
 	if (!item->hasUnreadReaction()) {
 		return;
 	}
+	const auto from = item->history()->session().api()
+		.reactionsNotifySettings().messagesFromCurrent();
+	if (from == Api::ReactionsNotifyFrom::None) {
+		return;
+	}
 	const auto peer = item->history()->peer;
 	const auto &settings = AyuSettings::getInstance();
 	if ((peer->isChannel() && !peer->isMegagroup() && !settings.showChannelReactions())
 		|| (peer->isMegagroup() && !settings.showGroupReactions())
 		|| (peer->isUser() && !settings.showPrivateChatReactions())) {
 		item->markEffectWatched();
-		return;
-	}
-	const auto from = item->history()->session().api()
-		.reactionsNotifySettings().messagesFromCurrent();
-	if (from == Api::ReactionsNotifyFrom::None) {
 		return;
 	}
 	for (const auto &[emoji, reactions] : item->recentReactions()) {

@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/controls/compose_ai_button_factory.h"
 
+#include "base/options.h"
 #include "boxes/compose_ai_box.h"
 #include "history/view/controls/history_view_compose_ai_button.h"
 #include "lang/lang_keys.h"
@@ -17,12 +18,25 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "styles/style_chat_helpers.h"
 
+// AyuGram includes
+#include "ayu/ayu_settings.h"
+
+
 namespace Ui {
+
+const char kOptionHideAiButton[] = "hide-ai-button";
+
+base::options::toggle HideAiButtonOption({
+	.id = kOptionHideAiButton,
+	.name = "Hide AI button",
+	.description = "Hide the AI Tools button in message compose fields.",
+});
 
 bool HasEnoughLinesForAi(
 		not_null<Main::Session*> session,
 		not_null<Ui::InputField*> field) {
-	if (session->appConfig().aiComposeStyles().empty()) {
+	if (!AyuSettings::getInstance().showAiEditorButtonInMessageField()
+		|| session->appConfig().aiComposeStyles().empty()) {
 		return false;
 	}
 	const auto &style = field->st().style;
@@ -105,7 +119,9 @@ auto SetupCaptionAiButton(SetupCaptionAiButtonArgs &&args)
 	rpl::merge(
 		field->heightChanges() | rpl::to_empty,
 		field->changes() | rpl::to_empty,
-		field->shownValue() | rpl::to_empty
+		field->shownValue() | rpl::to_empty,
+		AyuSettings::getInstance().showAiEditorButtonInMessageFieldChanges()
+			| rpl::to_empty
 	) | rpl::on_next([=] {
 		updateVisibility();
 	}, button->lifetime());

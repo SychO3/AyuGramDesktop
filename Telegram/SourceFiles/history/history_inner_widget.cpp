@@ -2407,11 +2407,12 @@ void HistoryInner::mouseReleaseEvent(QMouseEvent *e) {
 		e->accept();
 		return;
 	}
-	registerReadMetricsActivity();
 	if (_wasForceClickPreview) {
 		_wasForceClickPreview = false;
 		return;
 	}
+
+	registerReadMetricsActivity();
 	mouseActionFinish(e->globalPos(), e->button());
 	if (!rect().contains(e->pos())) {
 		leaveEvent(e);
@@ -2788,7 +2789,7 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		AyuUi::AddHistoryAction(_menu, item);
 		AyuUi::AddHideMessageAction(_menu, item);
 		AyuUi::AddUserMessagesAction(_menu, item);
-		AyuUi::AddRepeatMessageAction(_menu, item);
+		AyuUi::AddRepeatMessageAction(_menu, item, HistoryView::Context::History);
 		AyuUi::AddMessageDetailsAction(_menu, item);
 	};
 	const auto addPhotoActions = [&](not_null<PhotoData*> photo, HistoryItem *item) {

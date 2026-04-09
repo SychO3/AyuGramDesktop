@@ -130,9 +130,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtWidgets/QApplication>
 
 // AyuGram includes
+#include "ayu/utils/telegram_helpers.h"
 #include "styles/style_ayu_icons.h"
 #include "ayu/ui/context_menu/context_menu.h"
 #include "ayu/features/forward/ayu_forward.h"
+
 
 namespace Window {
 namespace {
@@ -3601,6 +3603,7 @@ base::weak_qptr<Ui::BoxContent> ShowSendNowMessagesBox(
 					MTP_int(session->scheduledMessages().lookupId(item)));
 			}
 		}
+		markReadAfterAction(history);
 		session->api().request(MTPmessages_SendScheduledMessages(
 			history->peer->input(),
 			MTP_vector<MTPint>(ids)

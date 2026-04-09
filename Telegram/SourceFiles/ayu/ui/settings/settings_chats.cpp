@@ -26,7 +26,7 @@
 namespace Settings {
 
 using namespace Builder;
-using namespace AyBuilder;
+using namespace AyuBuilder;
 
 namespace {
 
@@ -412,6 +412,20 @@ void BuildMessageFieldElements(SectionBuilder &builder, AyuSectionBuilder &ayu) 
 		.getter = &AyuSettings::showMicrophoneButtonInMessageField,
 		.setter = &AyuSettings::setShowMicrophoneButtonInMessageField,
 		.icon = { &st::messageFieldVoiceIcon },
+	});
+	ayu.addSettingToggle({
+		.id = u"ayu/showGiftButtonInMessageField"_q,
+		.title = tr::lng_profile_action_short_gift(),
+		.getter = &AyuSettings::showGiftButtonInMessageField,
+		.setter = &AyuSettings::setShowGiftButtonInMessageField,
+		.icon = { &st::settingsButtonIconGift },
+	});
+	ayu.addSettingToggle({
+		.id = u"ayu/showAiEditorButtonInMessageField"_q,
+		.title = tr::lng_ai_compose_title(),
+		.getter = &AyuSettings::showAiEditorButtonInMessageField,
+		.setter = &AyuSettings::setShowAiEditorButtonInMessageField,
+		.icon = { &st::messageFieldCocoonAiIcon },
 	});
 
 	ayu.addSectionDivider();

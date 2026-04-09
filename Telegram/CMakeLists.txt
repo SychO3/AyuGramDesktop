@@ -229,14 +229,14 @@ set(ayugram_files
         ayu/features/forward/ayu_sync.h
         ayu/features/translator/ayu_translator.cpp
         ayu/features/translator/ayu_translator.h
+        ayu/features/translator/ayu_translate_provider.cpp
+        ayu/features/translator/ayu_translate_provider.h
         ayu/features/translator/html_parser.cpp
         ayu/features/translator/html_parser.h
         ayu/features/translator/implementations/google.cpp
         ayu/features/translator/implementations/google.h
         ayu/features/translator/implementations/yandex.cpp
         ayu/features/translator/implementations/yandex.h
-        ayu/features/translator/implementations/telegram.cpp
-        ayu/features/translator/implementations/telegram.h
         ayu/features/translator/implementations/base.cpp
         ayu/features/translator/implementations/base.h
         ayu/features/filters/filters_controller.cpp
@@ -255,7 +255,9 @@ set(ayugram_files
         info/profile/info_profile_music_button.h
 )
 
-telegram_add_apple_swift_runtime(Telegram)
+if (NOT DESKTOP_APP_DISABLE_SWIFT6)
+    telegram_add_apple_swift_runtime(Telegram)
+endif()
 
 target_precompile_headers(Telegram PRIVATE $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:${src_loc}/stdafx.h>)
 nice_target_sources(Telegram ${src_loc}

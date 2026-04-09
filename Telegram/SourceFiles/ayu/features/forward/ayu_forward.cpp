@@ -210,6 +210,7 @@ void sendMedia(
 			session,
 			group,
 			mediaType,
+			std::move(message.textWithTags),
 			message.action);
 	}
 }

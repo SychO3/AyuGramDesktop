@@ -16,8 +16,8 @@
 #include "features/translator/ayu_translator.h"
 #include "main/main_domain.h"
 #include "main/main_session.h"
+#include "platform/platform_translate_provider.h"
 #include "rpl/combine.h"
-#include "ui/ayu_userpic.h"
 #include "window/window_controller.h"
 
 #include <fstream>
@@ -453,9 +453,9 @@ void AyuSettings::validate() {
 		}
 	};
 
-	auto validateEnum = [&](auto &var, const auto &defaultVar) {
+	auto validateEnum = [&](auto &var, const auto &defaultVar, int max = 2) {
 		auto intVal = static_cast<int>(var.current());
-		if (intVal < 0 || intVal > 2) {
+		if (intVal < 0 || intVal > max) {
 			var = defaultVar.current();
 			modified = true;
 		}
@@ -471,7 +471,12 @@ void AyuSettings::validate() {
 	validateEnum(_showRepeatMessageInContextMenu, defaults._showRepeatMessageInContextMenu);
 	validateEnum(_showAddFilterInContextMenu, defaults._showAddFilterInContextMenu);
 
-	validateEnum(_translationProvider, defaults._translationProvider);
+	validateEnum(_translationProvider, defaults._translationProvider, 3);
+	if ((_translationProvider.current() == TranslationProvider::Native)
+		&& !Platform::IsTranslateProviderAvailable()) {
+		_translationProvider = defaults._translationProvider.current();
+		modified = true;
+	}
 
 	validateRange(_messageBubbleRadius, 0, 16, defaults._messageBubbleRadius);
 	validateRange(_wideMultiplier, 0.5, 4.0, defaults._wideMultiplier);
@@ -772,6 +777,18 @@ void AyuSettings::setShowAutoDeleteButtonInMessageField(bool val) {
 	save();
 }
 
+void AyuSettings::setShowGiftButtonInMessageField(bool val) {
+	if (_showGiftButtonInMessageField.current() == val) return;
+	_showGiftButtonInMessageField = val;
+	save();
+}
+
+void AyuSettings::setShowAiEditorButtonInMessageField(bool val) {
+	if (_showAiEditorButtonInMessageField.current() == val) return;
+	_showAiEditorButtonInMessageField = val;
+	save();
+}
+
 void AyuSettings::setShowAttachPopup(bool val) {
 	if (_showAttachPopup.current() == val) return;
 	_showAttachPopup = val;
@@ -953,9 +970,15 @@ void AyuSettings::setVoiceConfirmation(bool val) {
 }
 
 void AyuSettings::setTranslationProvider(TranslationProvider val) {
+	if ((val == TranslationProvider::Native)
+		&& !Platform::IsTranslateProviderAvailable()) {
+		val = TranslationProvider::Telegram;
+	}
 	if (_translationProvider.current() == val) return;
 	_translationProvider = val;
-	Ayu::Translator::TranslateManager::currentInstance()->resetCache();
+	if (const auto manager = Ayu::Translator::TranslateManager::currentInstance()) {
+		manager->resetCache();
+	}
 	save();
 }
 
@@ -1046,6 +1069,8 @@ void to_json(nlohmann::json &j, const AyuSettings &s) {
 		{"showEmojiButtonInMessageField", s._showEmojiButtonInMessageField.current()},
 		{"showMicrophoneButtonInMessageField", s._showMicrophoneButtonInMessageField.current()},
 		{"showAutoDeleteButtonInMessageField", s._showAutoDeleteButtonInMessageField.current()},
+		{"showGiftButtonInMessageField", s._showGiftButtonInMessageField.current()},
+		{"showAiEditorButtonInMessageField", s._showAiEditorButtonInMessageField.current()},
 		{"showAttachPopup", s._showAttachPopup.current()},
 		{"showEmojiPopup", s._showEmojiPopup.current()},
 		{"showMyProfileInDrawer", s._showMyProfileInDrawer.current()},
@@ -1144,6 +1169,8 @@ void from_json(const nlohmann::json &j, AyuSettings &s) {
 	s._showEmojiButtonInMessageField = j.value("showEmojiButtonInMessageField", defaults._showEmojiButtonInMessageField.current());
 	s._showMicrophoneButtonInMessageField = j.value("showMicrophoneButtonInMessageField", defaults._showMicrophoneButtonInMessageField.current());
 	s._showAutoDeleteButtonInMessageField = j.value("showAutoDeleteButtonInMessageField", defaults._showAutoDeleteButtonInMessageField.current());
+	s._showGiftButtonInMessageField = j.value("showGiftButtonInMessageField", defaults._showGiftButtonInMessageField.current());
+	s._showAiEditorButtonInMessageField = j.value("showAiEditorButtonInMessageField", defaults._showAiEditorButtonInMessageField.current());
 	s._showAttachPopup = j.value("showAttachPopup", defaults._showAttachPopup.current());
 	s._showEmojiPopup = j.value("showEmojiPopup", defaults._showEmojiPopup.current());
 	s._showMyProfileInDrawer = j.value("showMyProfileInDrawer", defaults._showMyProfileInDrawer.current());

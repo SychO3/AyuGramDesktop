@@ -144,6 +144,11 @@ TopBarWidget::TopBarWidget(
 , _onlineUpdater([=] { updateOnlineDisplay(); }) {
 	setAttribute(Qt::WA_OpaquePaintEvent);
 
+	_clear->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
+	_forward->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
+	_sendNow->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
+	_delete->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
+
 	Lang::Updated(
 	) | rpl::on_next([=] {
 		refreshLang();
@@ -1127,7 +1132,6 @@ void TopBarWidget::updateControlsGeometry() {
 	}
 
 	_messageShot->moveToLeft(buttonsLeft, selectedButtonsTop);
-
 	{
 		const auto large = st::topBarActionButtonLargeRadius;
 		const auto &buttonSt = st::defaultActiveButton;
@@ -1138,6 +1142,7 @@ void TopBarWidget::updateControlsGeometry() {
 			_forward.data(),
 			_sendNow.data(),
 			_delete.data(),
+			_messageShot.data(),
 		};
 		auto first = (Ui::RoundButton*)(nullptr);
 		auto last = (Ui::RoundButton*)(nullptr);
@@ -1277,8 +1282,8 @@ void TopBarWidget::updateControlsVisibility() {
 	}
 
 	const auto &settings = AyuSettings::getInstance();
-	const auto visible = showSelectedState() || _selectedShown.animating();
 
+	const auto visible = showSelectedState() || _selectedShown.animating();
 	_clear->setVisible(visible);
 	_delete->setVisible(_canDelete && visible);
 	_messageShot->setVisible(settings.showMessageShot() && visible);

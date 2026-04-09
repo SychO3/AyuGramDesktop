@@ -28,6 +28,7 @@ void sendMessageSync(not_null<Main::Session*> session, Api::MessageToSend &messa
 void sendDocumentSync(not_null<Main::Session*> session,
 					  Ui::PreparedGroup &group,
 					  SendMediaType type,
+					  TextWithTags &&caption,
 					  const Api::SendAction &action);
 
 void sendStickerSync(not_null<Main::Session*> session,

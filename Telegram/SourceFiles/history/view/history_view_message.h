@@ -78,8 +78,23 @@ struct RightBadge : RuntimeComponent<RightBadge, Element> {
 	BadgeRole role = BadgeRole::User;
 	bool overridden = false;
 	bool special = false;
+	bool channel = false;
 	mutable std::unique_ptr<Ui::RippleAnimation> ripple;
 	mutable QPoint lastPoint;
+};
+
+struct TextAppearing : RuntimeComponent<TextAppearing, Element> {
+	std::vector<Ui::Text::LineLayoutInfo> lines;
+	int textWidth = 0;
+	int shownLines = 0;
+	int revealedLineWidth = 0;
+	int shownWidth = 0;
+	int shownHeight = 0;
+	crl::time widthDuration = 0;
+	Ui::Animations::Simple widthAnimation;
+	Ui::Animations::Simple heightAnimation;
+	bool geometryValid = false;
+	bool heightStarted = false;
 };
 
 struct BottomRippleMask {
@@ -372,6 +387,11 @@ private:
 	[[nodiscard]] ClickHandlerPtr psaTooltipLink() const;
 	void psaTooltipToggled(bool shown) const;
 	void invalidateTextDependentCache() override;
+	void startTextAppearingWidthAnimation();
+	void startTextAppearingHeightAnimation();
+	void textAppearingTick();
+	void textAppearingHeightTick();
+	void tryAdvanceTextAppearing();
 
 	void refreshRightBadge();
 	[[nodiscard]] int rightBadgeWidth() const;

@@ -264,14 +264,22 @@ void waitForMsgSync(not_null<Main::Session*> session, const Api::SendAction &act
 void sendDocumentSync(not_null<Main::Session*> session,
 					  Ui::PreparedGroup &group,
 					  SendMediaType type,
+					  TextWithTags &&caption,
 					  const Api::SendAction &action) {
 	auto groupId = std::make_shared<SendingAlbum>();
 	groupId->groupId = base::RandomValue<uint64>();
 
-	crl::on_main([=, lst = std::move(group.list)]() mutable
+	crl::on_main([=, lst = std::move(group.list), caption = std::move(caption)]() mutable
 	{
 		auto size = lst.files.size();
-		session->api().sendFiles(std::move(lst), type, size > 1 ? groupId : nullptr, action);
+		if (!lst.files.empty()) {
+			lst.files.front().caption = std::move(caption);
+		}
+		session->api().sendFiles(
+			std::move(lst),
+			type,
+			size > 1 ? groupId : nullptr,
+			action);
 	});
 
 	waitForMsgSync(session, action);

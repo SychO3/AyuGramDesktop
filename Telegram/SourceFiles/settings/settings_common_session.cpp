@@ -22,8 +22,8 @@ bool HasMenu(Type type) {
 	return (type == ::Settings::CloudPasswordEmailConfirmId())
 		|| (type == MainId())
 		|| (type == ChatId())
-		|| (type == AyuFiltersId())
-		|| (type == Experimental::Id());
+		|| (type == Experimental::Id())
+		|| (type == AyuFiltersId());
 }
 
 } // namespace Settings

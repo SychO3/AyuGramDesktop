@@ -1580,6 +1580,7 @@ void Element::overrideRightBadge(const QString &text, BadgeRole role) {
 	const auto badge = Get<RightBadge>();
 	badge->overridden = true;
 	badge->role = role;
+	badge->channel = false;
 	badge->tag.setMarkedText(
 		st::defaultTextStyle,
 		{ text },
@@ -2669,6 +2670,12 @@ void Element::itemTextUpdated() {
 	if (_media && !data()->media()) {
 		refreshMedia(nullptr);
 	}
+}
+
+void Element::itemTextUpdatedStreaming() {
+	clearSpecialOnlyEmoji();
+	_text = Ui::Text::String(st::msgMinWidth);
+	invalidateTextSizeCache();
 }
 
 void Element::blockquoteExpandChanged() {
