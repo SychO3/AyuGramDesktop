@@ -2262,6 +2262,14 @@ void HistoryWidget::fileChosen(ChatHelpers::FileChosen &&data) {
 	}
 }
 
+bool HistoryWidget::processChosenSticker(ChatHelpers::FileChosen &&chosen) {
+	if (!_peer) {
+		return false;
+	}
+	fileChosen(std::move(chosen));
+	return true;
+}
+
 void HistoryWidget::saveCloudDraft() {
 	controller()->session().api().saveCurrentDraftToCloud();
 }
