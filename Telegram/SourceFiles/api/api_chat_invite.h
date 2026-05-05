@@ -9,11 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class ChannelData;
 
-namespace Info::Profile {
-class Badge;
-enum class BadgeType : ushort;
-} // namespace Info::Profile
-
 namespace Main {
 class Session;
 } // namespace Main

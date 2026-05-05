@@ -1150,7 +1150,9 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 		channel->setName(qs(data.vtitle()), QString());
 
 		channel->setAccessHash(data.vaccess_hash().v);
-		channel->setPhoto(MTP_chatPhotoEmpty());
+		if (channel->userpicPhotoUnknown()) {
+			channel->setPhoto(MTP_chatPhotoEmpty());
+		}
 		channel->date = 0;
 		channel->setMembersCount(0);
 
@@ -4218,6 +4220,21 @@ void Session::webpageApplyFields(
 	auto iv = (data.vcached_page() && !IgnoreIv(type))
 		? std::make_unique<Iv::Data>(data, *data.vcached_page())
 		: nullptr;
+	const auto resolvedPhoto = story
+		? story->photo()
+		: photo
+		? processPhoto(*photo).get()
+		: nullptr;
+	const auto resolvedDocument = story
+		? story->document()
+		: document
+		? processDocument(*document).get()
+		: lookupThemeDocument();
+	const auto photoIsVideoCover = data.is_video_cover_photo()
+		|| (resolvedDocument
+			&& resolvedPhoto
+			&& resolvedDocument->isVideoFile()
+			&& !resolvedDocument->hasThumbnail());
 	webpageApplyFields(
 		page,
 		type,
@@ -4227,16 +4244,8 @@ void Session::webpageApplyFields(
 		qs(data.vtitle().value_or_empty()),
 		(story ? story->caption() : description),
 		storyId,
-		(story
-			? story->photo()
-			: photo
-			? processPhoto(*photo).get()
-			: nullptr),
-		(story
-			? story->document()
-			: document
-			? processDocument(*document).get()
-			: lookupThemeDocument()),
+		resolvedPhoto,
+		resolvedDocument,
 		WebPageCollage(this, data),
 		std::move(iv),
 		lookupStickerSet(),
@@ -4245,7 +4254,7 @@ void Session::webpageApplyFields(
 		data.vduration().value_or_empty(),
 		qs(data.vauthor().value_or_empty()),
 		data.is_has_large_media(),
-		data.is_video_cover_photo(),
+		photoIsVideoCover,
 		pendingTill);
 }
 
