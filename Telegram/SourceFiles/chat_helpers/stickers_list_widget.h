@@ -422,6 +422,7 @@ private:
 	void backToSearchResults();
 	void fillFilteredStickersRow();
 	void fillFoundStickersRow(const std::vector<DocumentId> &stickerIds);
+	void addSearchRow(not_null<Data::StickersSet*> set);
 	void toggleSearchLoading(bool loading);
 
 	void showPreview();
