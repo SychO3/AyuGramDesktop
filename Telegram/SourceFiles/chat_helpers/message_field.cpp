@@ -63,9 +63,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtGui/QGuiApplication>
 #include <QtGui/QTextBlock>
 #include <QtGui/QClipboard>
+#include <QtGui/QContextMenuEvent>
 #include <QtWidgets/QApplication>
 
 #include "ayu/features/forward/ayu_forward.h"
+#include "ayu/ayu_settings.h"
+#include "ayu/features/translator/ayu_translator.h"
+#include "api/api_text_entities.h"
 
 namespace {
 
@@ -686,10 +690,121 @@ std::shared_ptr<Ui::ChatStyle> InitMessageField(
 		std::move(allowPremiumEmoji));
 }
 
+namespace {
+
+// AyuGram: translate the current draft text in the compose field in place.
+void TranslateFieldDraft(
+		std::shared_ptr<Main::SessionShow> show,
+		base::weak_qptr<Ui::InputField> weak) {
+	const auto field = weak.get();
+	if (!field || !HasSendText(field)) {
+		return;
+	}
+	const auto manager = Ayu::Translator::TranslateManager::currentInstance()
+		? Ayu::Translator::TranslateManager::currentInstance()
+		: (Ayu::Translator::TranslateManager::init(),
+			Ayu::Translator::TranslateManager::currentInstance());
+	const auto to = Core::App().settings().translateTo();
+	if (!manager || to.twoLetterCode().isEmpty()) {
+		show->showToast(tr::lng_translate_box_error(tr::now));
+		return;
+	}
+	const auto session = &show->session();
+	const auto provider = AyuSettings::getInstance().translationProvider();
+
+	const auto current = field->getTextWithTags();
+	const auto source = TextWithEntities{
+		current.text,
+		TextUtilities::ConvertTextTagsToEntities(current.tags),
+	};
+	auto text = QVector<MTPTextWithEntities>(1, MTP_textWithEntities(
+		MTP_string(source.text),
+		Api::EntitiesToMTP(
+			session,
+			source.entities,
+			Api::ConvertOption::SkipLocal)));
+
+	using Flag = MTPmessages_TranslateText::Flag;
+	const auto done = [=](
+			const MTPmessages_TranslatedText &result) {
+		const auto strong = weak.get();
+		if (!strong) {
+			return;
+		}
+		const auto &list = result.data().vresult().v;
+		if (list.isEmpty()) {
+			show->showToast(tr::lng_translate_box_error(tr::now));
+			return;
+		}
+		const auto parsed = Api::ParseTextWithEntities(session, list[0]);
+		strong->setTextWithTags({
+			parsed.text,
+			TextUtilities::ConvertEntitiesToTextTags(parsed.entities),
+		});
+		strong->setFocus();
+	};
+	const auto fail = [=] {
+		if (weak) {
+			show->showToast(tr::lng_translate_box_error(tr::now));
+		}
+	};
+	manager->request(
+		session,
+		MTP_flags(Flag::f_text),
+		MTP_inputPeerEmpty(),
+		MTPVector<MTPint>(),
+		MTP_vector<MTPTextWithEntities>(text),
+		MTP_string(to.twoLetterCode()),
+		provider
+	).done(done).fail(fail).send();
+}
+
+// AyuGram: callback that appends a "Translate" item to the field's context menu.
+[[nodiscard]] Fn<void(not_null<Ui::PopupMenu*>)> FieldTranslateMenuSetup(
+		std::shared_ptr<Main::SessionShow> show,
+		not_null<Ui::InputField*> field) {
+	const auto weak = base::make_weak(field);
+	return [=](not_null<Ui::PopupMenu*> menu) {
+		const auto strong = weak.get();
+		if (!strong || !HasSendText(strong)) {
+			return;
+		}
+		menu->addAction(
+			tr::lng_context_translate(tr::now),
+			[=] { TranslateFieldDraft(show, weak); },
+			&st::menuIconTranslate);
+	};
+}
+
+} // namespace
+
 void InitSpellchecker(
 		std::shared_ptr<Main::SessionShow> show,
 		not_null<Ui::InputField*> field,
 		bool skipDictionariesManager) {
+	// AyuGram: inject "Translate" into the field's right-click menu. Both the
+	// spellchecker-enabled and disabled paths converge on contextMenuEventInner,
+	// but only the enabled path reaches us via setExtendedContextMenu. So we wrap
+	// the spellchecker producer for the enabled case, and install an event filter
+	// firing our own producer for the disabled (or spellcheck-compiled-out) case.
+	const auto setupTranslate = FieldTranslateMenuSetup(show, field);
+	using ExtendedContextMenu = Ui::InputField::ExtendedContextMenu;
+	const auto stream = field->lifetime().make_state<
+		rpl::event_stream<ExtendedContextMenu>>();
+	field->setExtendedContextMenu(stream->events());
+
+	const auto fireOwnMenu = [=](not_null<QContextMenuEvent*> e) {
+		const auto menu = field->rawTextEdit()->createStandardContextMenu();
+		if (!menu) {
+			return;
+		}
+		auto copyEvent = std::make_shared<QContextMenuEvent>(
+			e->reason(),
+			e->pos(),
+			e->globalPos());
+		stream->fire({ menu, std::move(copyEvent), setupTranslate });
+	};
+
 #ifndef TDESKTOP_DISABLE_SPELLCHECK
 	using namespace Spellchecker;
 	const auto session = &show->session();
@@ -703,8 +818,28 @@ void InitSpellchecker(
 		field.get(),
 		Core::App().settings().spellcheckerEnabledValue(),
 		menuItem);
-	field->setExtendedContextMenu(s->contextMenuCreated());
+	field->setExtendedContextMenu(
+		s->contextMenuCreated(
+		) | rpl::map([=](ExtendedContextMenu data) {
+			data.setupPopupMenu = setupTranslate;
+			return data;
+		}));
+	const auto spellcheckEnabled = [] {
+		return Core::App().settings().spellcheckerEnabled();
+	};
+#else // TDESKTOP_DISABLE_SPELLCHECK
+	const auto spellcheckEnabled = [] { return false; };
 #endif // TDESKTOP_DISABLE_SPELLCHECK
+
+	const auto filter = [=](not_null<QEvent*> e) {
+		if (e->type() == QEvent::ContextMenu && !spellcheckEnabled()) {
+			fireOwnMenu(static_cast<QContextMenuEvent*>(e.get()));
+			return base::EventFilterResult::Cancel;
+		}
+		return base::EventFilterResult::Continue;
+	};
+	base::install_event_filter(field->rawTextEdit(), filter);
+	base::install_event_filter(field->rawTextEdit()->viewport(), filter);
 }
 
 bool HasSendText(not_null<const Ui::InputField*> field) {

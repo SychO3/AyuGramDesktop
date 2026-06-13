@@ -1,3 +1,7 @@
+6.9.5 (13.06.26)
+
+- Add "Translate" to the message field right-click menu to translate your draft in place.
+
 6.9.4 (13.06.26)
 
 - Fix high CPU usage when ghost mode is enabled.
