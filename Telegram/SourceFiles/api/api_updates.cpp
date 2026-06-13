@@ -1021,7 +1021,7 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 		|| (isOnline && gotOtherOffline)) {
 		api().request(base::take(_onlineRequest)).cancel();
 
-		_lastWasOnline = isOnlineOrig;
+		_lastWasOnline = isOnline;
 		_lastSetOnline = ms;
 		if (!Core::Quitting()) {
 			_onlineRequest = api().request(MTPaccount_UpdateStatus(
