@@ -67,9 +67,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtWidgets/QApplication>
 
 #include "ayu/features/forward/ayu_forward.h"
-#include "ayu/ayu_settings.h"
-#include "ayu/features/translator/ayu_translator.h"
-#include "api/api_text_entities.h"
+#include "lang/translate_provider.h"
+#include "boxes/translate_box.h"
+#include "ui/boxes/choose_language_box.h"
 
 namespace {
 
@@ -695,71 +695,85 @@ namespace {
 // AyuGram: translate the current draft text in the compose field in place.
 void TranslateFieldDraft(
 		std::shared_ptr<Main::SessionShow> show,
-		base::weak_qptr<Ui::InputField> weak) {
+		base::weak_qptr<Ui::InputField> weak,
+		LanguageId to) {
 	const auto field = weak.get();
 	if (!field || !HasSendText(field)) {
 		return;
 	}
-	const auto manager = Ayu::Translator::TranslateManager::currentInstance()
-		? Ayu::Translator::TranslateManager::currentInstance()
-		: (Ayu::Translator::TranslateManager::init(),
-			Ayu::Translator::TranslateManager::currentInstance());
-	const auto to = Core::App().settings().translateTo();
-	if (!manager || to.twoLetterCode().isEmpty()) {
+	if (!to.known()) {
 		show->showToast(tr::lng_translate_box_error(tr::now));
 		return;
 	}
 	const auto session = &show->session();
-	const auto provider = AyuSettings::getInstance().translationProvider();
 
 	const auto current = field->getTextWithTags();
-	const auto source = TextWithEntities{
+	auto source = TextWithEntities{
 		current.text,
 		TextUtilities::ConvertTextTagsToEntities(current.tags),
 	};
-	auto text = QVector<MTPTextWithEntities>(1, MTP_textWithEntities(
-		MTP_string(source.text),
-		Api::EntitiesToMTP(
-			session,
-			source.entities,
-			Api::ConvertOption::SkipLocal)));
 
-	using Flag = MTPmessages_TranslateText::Flag;
-	const auto done = [=](
-			const MTPmessages_TranslatedText &result) {
+	// Route through the unified provider so the user's configured translation
+	// backend (Telegram/Google/Yandex/Native) is honored. Keep the provider
+	// alive for the duration of the async request via a shared_ptr.
+	const auto provider = std::shared_ptr<Ui::TranslateProvider>(
+		Ui::CreateTranslateProvider(session));
+	if (!provider) {
+		show->showToast(tr::lng_translate_box_error(tr::now));
+		return;
+	}
+	auto request = Ui::TranslateProviderRequest{
+		.text = std::move(source),
+	};
+	provider->request(std::move(request), to, [=](
+			Ui::TranslateProviderResult result) {
+		// Capture `provider` to keep it alive until the callback fires.
+		(void)provider;
 		const auto strong = weak.get();
 		if (!strong) {
 			return;
 		}
-		const auto &list = result.data().vresult().v;
-		if (list.isEmpty()) {
+		if (!result.text) {
 			show->showToast(tr::lng_translate_box_error(tr::now));
 			return;
 		}
-		const auto parsed = Api::ParseTextWithEntities(session, list[0]);
 		strong->setTextWithTags({
-			parsed.text,
-			TextUtilities::ConvertEntitiesToTextTags(parsed.entities),
+			result.text->text,
+			TextUtilities::ConvertEntitiesToTextTags(result.text->entities),
 		});
 		strong->setFocus();
-	};
-	const auto fail = [=] {
-		if (weak) {
-			show->showToast(tr::lng_translate_box_error(tr::now));
-		}
-	};
-	manager->request(
-		session,
-		MTP_flags(Flag::f_text),
-		MTP_inputPeerEmpty(),
-		MTPVector<MTPint>(),
-		MTP_vector<MTPTextWithEntities>(text),
-		MTP_string(to.twoLetterCode()),
-		provider
-	).done(done).fail(fail).send();
+	});
 }
 
-// AyuGram: callback that appends a "Translate" item to the field's context menu.
+// AyuGram: candidate target languages shown directly in the submenu.
+[[nodiscard]] std::vector<LanguageId> FieldTranslateLanguages() {
+	auto result = std::vector<LanguageId>();
+	const auto add = [&](LanguageId id) {
+		if (id.known() && !ranges::contains(result, id)) {
+			result.push_back(id);
+		}
+	};
+	// The user's configured target goes first, then a short popular list.
+	add(Core::App().settings().translateTo());
+	for (const auto &id : Core::App().settings().skipTranslationLanguages()) {
+		add(id);
+	}
+	for (const auto language : {
+			QLocale::English,
+			QLocale::Chinese,
+			QLocale::Spanish,
+			QLocale::Russian,
+			QLocale::Japanese,
+			QLocale::Korean,
+			QLocale::French,
+			QLocale::German }) {
+		add(LanguageId{ language });
+	}
+	return result;
+}
+
+// AyuGram: callback that appends a "Translate" submenu to the field's context
+// menu, letting the user pick the target language inline.
 [[nodiscard]] Fn<void(not_null<Ui::PopupMenu*>)> FieldTranslateMenuSetup(
 		std::shared_ptr<Main::SessionShow> show,
 		not_null<Ui::InputField*> field) {
@@ -769,9 +783,27 @@ void TranslateFieldDraft(
 		if (!strong || !HasSendText(strong)) {
 			return;
 		}
+		auto submenu = base::make_unique_q<Ui::PopupMenu>(
+			menu->parentWidget(),
+			menu->st());
+		for (const auto &id : FieldTranslateLanguages()) {
+			submenu->addAction(Ui::LanguageName(id), [=] {
+				TranslateFieldDraft(show, weak, id);
+			});
+		}
+		submenu->addSeparator();
+		submenu->addAction(
+			tr::lng_translate_menu_to(tr::now)
+				+ QString::fromUtf8("\xE2\x80\xA6"), // "Translate To…"
+			[=] {
+				show->showBox(Ui::ChooseTranslateToBox({}, [=](LanguageId id) {
+					TranslateFieldDraft(show, weak, id);
+				}));
+			},
+			&st::menuIconEdit);
 		menu->addAction(
 			tr::lng_context_translate(tr::now),
-			[=] { TranslateFieldDraft(show, weak); },
+			std::unique_ptr<Ui::PopupMenu>(submenu.release()),
 			&st::menuIconTranslate);
 	};
 }
