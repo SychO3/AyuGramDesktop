@@ -196,6 +196,7 @@ jobs:
         run: find $LibrariesPath '(' '(' ! '(' -name '*.lib' -o -name '*.a' -o -name '*.exe' -o -name '*.h' -o -name '*.hpp' -o -name '*.inc' -o -name '*.cmake' -o -path '*/include/*' -o -path '*/objects-*' -o -path '*/cache_keys/*' -o -path '*/patches/*' ')' -type f ')' -o -empty ')' -delete || true
 
       - name: Configure and build (Release, x64).
+        timeout-minutes: 320
         run: |
           cd %TBUILD%\%REPO_NAME%\Telegram
           call configure.bat x64 ^
@@ -204,7 +205,7 @@ jobs:
           -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON ^
           -D DESKTOP_APP_DISABLE_CRASH_REPORTS=ON
           if %errorlevel% neq 0 exit /b %errorlevel%
-          cmake --build ..\out --config Release --target Telegram --parallel
+          cmake --build ..\out --config Release --target Telegram --parallel 2
           if %errorlevel% neq 0 exit /b %errorlevel%
 
       - name: Package.
