@@ -84,6 +84,19 @@ jobs:
           cd $REPO_NAME
           cmake --build out --config Release --target Telegram --parallel
 
+      - name: Compile app icons.
+        run: |
+          APP="$REPO_NAME/out/Release/AyuGram.app"
+          RESOURCES="$APP/Contents/Resources"
+          ICONS_SRC="$REPO_NAME/Telegram/Telegram"
+
+          # Remove raw .icon directories that Xcode only copied without compiling
+          find "$RESOURCES" -name "*.icon" -type d -exec rm -rf {} + 2>/dev/null || true
+
+          # Generate default icon from iconset
+          iconutil --convert icns --output "$RESOURCES/AppIcon-Default.icns" \
+            "$ICONS_SRC/Images.xcassets/Icon.iconset"
+
       - name: Codesign (ad-hoc, hardened runtime).
         run: |
           APP="$REPO_NAME/out/Release/AyuGram.app"
