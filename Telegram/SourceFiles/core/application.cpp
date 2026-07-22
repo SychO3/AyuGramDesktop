@@ -103,6 +103,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "ayu/ayu_infra.h"
+#include "ayu/data/ayu_database.h"
 #include "ayu/features/streamer_mode/streamer_mode.h"
 
 
@@ -225,6 +226,9 @@ Application::~Application() {
 	if (_saveSettingsTimer && _saveSettingsTimer->isActive()) {
 		Local::writeSettings();
 	}
+
+	// Flush batched deleted/edited inserts before tearing down storage.
+	AyuDatabase::flushPendingWrites();
 
 	_windowStack.clear();
 	setLastActiveWindow(nullptr);
