@@ -8,9 +8,43 @@
 
 #include "ayu/data/entities.h"
 #include "ayu/libs/sqlite/sqlite_orm.h"
+#include "base/timer.h"
 #include "base/unixtime.h"
 
+#include <algorithm>
+
 using namespace sqlite_orm;
+
+namespace {
+
+// Coalesce high-frequency deleted/edited inserts into one transaction.
+// See: https://github.com/SychO3/AyuGramDesktop/issues/1
+constexpr auto kBatchFlushMs = crl::time(200);
+constexpr auto kBatchMaxSize = 64;
+
+std::vector<DeletedMessage> PendingDeleted;
+std::vector<EditedMessage> PendingEdited;
+
+base::Timer &FlushTimer() {
+	static base::Timer timer([] {
+		AyuDatabase::flushPendingWrites();
+	});
+	return timer;
+}
+
+void scheduleFlush() {
+	const auto total = PendingDeleted.size() + PendingEdited.size();
+	if (total >= kBatchMaxSize) {
+		AyuDatabase::flushPendingWrites();
+		return;
+	}
+	if (!FlushTimer().isActive()) {
+		FlushTimer().callOnce(kBatchFlushMs);
+	}
+}
+
+} // namespace
+
 auto storage = make_storage(
 	"./tdata/ayudata.db",
 	make_table<SchemaVersion>(
@@ -209,6 +243,11 @@ void runMigrations(decltype(storage) &storage) {
 namespace AyuDatabase {
 
 void moveCurrentDatabase() {
+	// Drop in-memory queue; the on-disk DB is being replaced.
+	FlushTimer().cancel();
+	PendingDeleted.clear();
+	PendingEdited.clear();
+
 	const auto time = base::unixtime::now();
 
 	if (QFile::exists("./tdata/ayudata.db")) {
@@ -224,8 +263,44 @@ void moveCurrentDatabase() {
 	}
 }
 
+void flushPendingWrites() {
+	FlushTimer().cancel();
+	if (PendingDeleted.empty() && PendingEdited.empty()) {
+		return;
+	}
+
+	auto deleted = std::move(PendingDeleted);
+	auto edited = std::move(PendingEdited);
+	PendingDeleted.clear();
+	PendingEdited.clear();
+
+	try {
+		storage.begin_transaction();
+		for (const auto &message : deleted) {
+			storage.insert(message);
+		}
+		for (const auto &message : edited) {
+			storage.insert(message);
+		}
+		storage.commit();
+	} catch (const std::exception &ex) {
+		try {
+			storage.rollback();
+		} catch (...) {
+		}
+		LOG(("Failed to flush pending messages: %1 (deleted=%2, edited=%3)")
+			.arg(ex.what())
+			.arg(deleted.size())
+			.arg(edited.size()));
+	}
+}
+
 void initialize() {
 	try {
+		// WAL + NORMAL: many small commits cost far less fsync than DELETE journal.
+		storage.pragma.journal_mode(sqlite_orm::journal_mode::WAL);
+		storage.pragma.synchronous(1);
+
 		storage.sync_schema(true);
 
 		runMigrations(storage);
@@ -235,6 +310,12 @@ void initialize() {
 		LOG(("Database initialization failed: %1").arg(ex.what()));
 		moveCurrentDatabase();
 
+		try {
+			storage.pragma.journal_mode(sqlite_orm::journal_mode::WAL);
+			storage.pragma.synchronous(1);
+		} catch (...) {
+		}
+
 		storage.sync_schema(true);
 		if (!storage.get_pointer<SchemaVersion>(1)) {
 			storage.insert(SchemaVersion{1, 0});
@@ -243,20 +324,12 @@ void initialize() {
 }
 
 void addEditedMessage(const EditedMessage &message) {
-	try {
-		storage.begin_transaction();
-		storage.insert(message);
-		storage.commit();
-	} catch (std::exception &ex) {
-		try {
-			storage.rollback();
-		} catch (...) {
-		}
-		LOG(("Failed to save edited message for some reason: %1").arg(ex.what()));
-	}
+	PendingEdited.push_back(message);
+	scheduleFlush();
 }
 
 std::vector<EditedMessage> getEditedMessages(ID userId, ID dialogId, ID messageId, ID minId, ID maxId, int totalLimit) {
+	flushPendingWrites();
 	return storage.get_all<EditedMessage>(
 		where(
 			column<EditedMessage>(&EditedMessage::userId) == userId and
@@ -271,6 +344,7 @@ std::vector<EditedMessage> getEditedMessages(ID userId, ID dialogId, ID messageI
 }
 
 bool hasRevisions(ID userId, ID dialogId, ID messageId) {
+	flushPendingWrites();
 	try {
 		return !storage.select(
 			columns(column<EditedMessage>(&EditedMessage::messageId)),
@@ -288,20 +362,12 @@ bool hasRevisions(ID userId, ID dialogId, ID messageId) {
 }
 
 void addDeletedMessage(const DeletedMessage &message) {
-	try {
-		storage.begin_transaction();
-		storage.insert(message);
-		storage.commit();
-	} catch (std::exception &ex) {
-		try {
-			storage.rollback();
-		} catch (...) {
-		}
-		LOG(("Failed to save edited message for some reason: %1").arg(ex.what()));
-	}
+	PendingDeleted.push_back(message);
+	scheduleFlush();
 }
 
 std::vector<DeletedMessage> getDeletedMessages(ID userId, ID dialogId, ID topicId, ID minId, ID maxId, int totalLimit, const std::string &searchQuery) {
+	flushPendingWrites();
 	if (searchQuery.empty()) {
 		return storage.get_all<DeletedMessage>(
 			where(
@@ -340,6 +406,7 @@ std::vector<DeletedMessage> getDeletedMessages(ID userId, ID dialogId, ID topicI
 }
 
 bool hasDeletedMessages(ID userId, ID dialogId, ID topicId) {
+	flushPendingWrites();
 	try {
 		return !storage.select(
 			columns(column<DeletedMessage>(&DeletedMessage::dialogId)),
@@ -357,6 +424,21 @@ bool hasDeletedMessages(ID userId, ID dialogId, ID topicId) {
 }
 
 void clearDeletedMessages(ID userId, ID dialogId, ID topicId) {
+	// Drop matching rows still waiting in the batch queue.
+	PendingDeleted.erase(
+		std::remove_if(
+			PendingDeleted.begin(),
+			PendingDeleted.end(),
+			[&](const DeletedMessage &message) {
+				return message.userId == userId
+					&& message.dialogId == dialogId
+					&& (topicId == 0 || message.topicId == topicId);
+			}),
+		PendingDeleted.end());
+	if (PendingDeleted.empty() && PendingEdited.empty()) {
+		FlushTimer().cancel();
+	}
+
 	try {
 		storage.remove_all<DeletedMessage>(
 			where(
