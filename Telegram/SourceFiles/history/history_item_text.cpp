@@ -396,6 +396,10 @@ TextForMimeData HistorySelectedItemPlainWrappedText(
 } // namespace
 
 TextForMimeData HistoryItemText(not_null<HistoryItem*> item) {
+	const auto &summary = item->summaryEntry();
+	if (!summary.result.empty() && summary.shown) {
+		return TextForMimeData::WithExpandedLinks(summary.result);
+	}
 	return AppendExtraCopyText(item, HistoryItemMainText(item));
 }
 
