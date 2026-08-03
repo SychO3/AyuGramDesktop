@@ -838,29 +838,11 @@ void InitSpellchecker(
 		std::shared_ptr<Main::SessionShow> show,
 		not_null<Ui::InputField*> field,
 		bool skipDictionariesManager) {
-	// AyuGram: inject "Translate" into the field's right-click menu. Both the
-	// spellchecker-enabled and disabled paths converge on contextMenuEventInner,
-	// but only the enabled path reaches us via setExtendedContextMenu. So we wrap
-	// the spellchecker producer for the enabled case, and install an event filter
-	// firing our own producer for the disabled (or spellcheck-compiled-out) case.
+	// AyuGram: inject "Translate" into the field's right-click menu.
 	const auto setupTranslate = FieldTranslateMenuSetup(show, field);
-	using ExtendedContextMenu = Ui::InputField::ExtendedContextMenu;
-	const auto stream = field->lifetime().make_state<
-		rpl::event_stream<ExtendedContextMenu>>();
-	field->setExtendedContextMenu(stream->events());
-
-	const auto fireOwnMenu = [=](not_null<QContextMenuEvent*> e) {
-		const auto menu = field->rawTextEdit()->createStandardContextMenu();
-		if (!menu) {
-			return;
-		}
-		auto copyEvent = std::make_shared<QContextMenuEvent>(
-			e->reason(),
-			e->pos(),
-			e->globalPos());
-		stream->fire({ menu, std::move(copyEvent), setupTranslate });
-	};
-
+	field->addContextMenuHook([=](Ui::InputField::ContextMenuRequest request) {
+		request.customizePopupMenu(setupTranslate);
+	});
 #ifndef TDESKTOP_DISABLE_SPELLCHECK
 	using namespace Spellchecker;
 	const auto session = &show->session();
@@ -876,22 +858,7 @@ void InitSpellchecker(
 		field.get(),
 		Core::App().settings().spellcheckerEnabledValue(),
 		menuItem);
-	const auto spellcheckEnabled = [] {
-		return Core::App().settings().spellcheckerEnabled();
-	};
-#else // TDESKTOP_DISABLE_SPELLCHECK
-	const auto spellcheckEnabled = [] { return false; };
 #endif // TDESKTOP_DISABLE_SPELLCHECK
-
-	const auto filter = [=](not_null<QEvent*> e) {
-		if (e->type() == QEvent::ContextMenu && !spellcheckEnabled()) {
-			fireOwnMenu(static_cast<QContextMenuEvent*>(e.get()));
-			return base::EventFilterResult::Cancel;
-		}
-		return base::EventFilterResult::Continue;
-	};
-	base::install_event_filter(field->rawTextEdit(), filter);
-	base::install_event_filter(field->rawTextEdit()->viewport(), filter);
 }
 
 bool HasSendText(not_null<const Ui::InputField*> field) {

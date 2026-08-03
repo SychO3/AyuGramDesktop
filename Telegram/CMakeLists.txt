@@ -1515,8 +1515,10 @@ PRIVATE
     intro/intro_phone.cpp
     intro/intro_phone.h
     intro/intro_qr.cpp
+    intro/intro_start.cpp
     intro/intro_qr.h
     intro/intro_signup.cpp
+    intro/intro_start.h
     intro/intro_signup.h
     intro/intro_step.cpp
     intro/intro_step.h

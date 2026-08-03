@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item_text.h"
 
+#include "api/api_transcribes.h"
 #include "data/data_groups.h"
 #include "data/data_media_types.h"
 #include "data/data_peer.h"

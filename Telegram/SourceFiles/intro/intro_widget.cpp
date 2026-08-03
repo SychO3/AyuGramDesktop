@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "intro/intro_phone.h"
 #include "intro/intro_qr.h"
+#include "intro/intro_start.h"
 #include "intro/intro_code.h"
 #include "intro/intro_signup.h"
 #include "intro/intro_password_check.h"
@@ -109,6 +110,10 @@ Widget::Widget(
 	}, lifetime());
 
 	switch (point) {
+	case EnterPoint::Start:
+		getNearestDC();
+		appendStep(new StartWidget(this, _account, getData()));
+		break;
 	case EnterPoint::Phone:
 		appendStep(new PhoneWidget(this, _account, getData()));
 		break;

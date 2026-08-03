@@ -657,6 +657,8 @@ void BottomInfo::layoutDateText() {
 			Ui::NameTextOptions(),
 			helper.context());
 	}
+}
+
 void BottomInfo::layoutViewsText() {
 	if (!_data.views || (_data.flags & Data::Flag::Sending)) {
 		_views.clear();
