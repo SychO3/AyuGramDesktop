@@ -29,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/local_url_handlers.h"
 #include "core/shortcuts.h"
 #include "core/ui_integration.h" // TextContext
+#include "data/components/ephemeral_messages.h"
 #include "data/components/location_pickers.h"
 #include "data/data_bot_app.h"
 #include "data/data_changes.h"
@@ -52,9 +53,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "inline_bots/inline_bot_confirm_prepared.h"
 #include "inline_bots/inline_bot_downloads.h"
 #include "inline_bots/inline_bot_storage.h"
-#ifdef TDESKTOP_IV_EDITOR
 #include "iv/editor/iv_editor_session.h"
-#endif // TDESKTOP_IV_EDITOR
 #include "iv/iv_instance.h"
 #include "lang/lang_keys.h"
 #include "main/main_app_config.h"
@@ -71,6 +70,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/chat/attach/attach_bot_webview.h"
 #include "ui/controls/location_picker.h"
 #include "ui/controls/userpic_button.h"
+#include "ui/delayed_activation.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/painter.h"
 #include "ui/text/text_custom_emoji.h"
@@ -87,12 +87,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_peer_menu.h"
 #include "window/window_session_controller.h"
 #include "styles/style_boxes.h"
-#include "styles/style_channel_earn.h"
 #include "styles/style_chat.h"
 #include "styles/style_info.h" // infoVerifiedStar.
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
-#include "styles/style_window.h"
 
 #include <QSvgRenderer>
 
@@ -934,15 +932,16 @@ WebViewInstance::WebViewInstance(WebViewDescriptor &&descriptor)
 , _bot(descriptor.bot)
 , _context(ResolveContext(_bot, std::move(descriptor.context)))
 , _button(std::move(descriptor.button))
-, _source(std::move(descriptor.source)) {
+, _source(std::move(descriptor.source))
+, _api(&_session->mtp()) {
 	Expects(_parentShow != nullptr);
 
 	resolve();
 }
 
 WebViewInstance::~WebViewInstance() {
-	_session->api().request(base::take(_requestId)).cancel();
-	_session->api().request(base::take(_prolongId)).cancel();
+	_api.request(base::take(_requestId)).cancel();
+	_api.request(base::take(_prolongId)).cancel();
 	base::take(_panel);
 }
 
@@ -1037,9 +1036,7 @@ void WebViewInstance::resolve() {
 		requestMain();
 	}, [&](WebViewSourceJoinChat data) {
 		confirmOpen([=] {
-			show({
-				.result = data.result,
-			});
+			requestChatJoin();
 		}, true);
 	});
 }
@@ -1071,7 +1068,7 @@ void WebViewInstance::resolveApp(
 		const QString &startparam,
 		ConfirmType confirmType) {
 	const auto already = _session->data().findBotApp(_bot->id, appname);
-	_requestId = _session->api().request(MTPmessages_GetBotApp(
+	_requestId = _api.request(MTPmessages_GetBotApp(
 		MTP_inputBotAppShortName(
 			_bot->inputUser(),
 			MTP_string(appname)),
@@ -1212,7 +1209,7 @@ void WebViewInstance::requestButton() {
 
 	const auto &action = *_context.action;
 	using Flag = MTPmessages_RequestWebView::Flag;
-	_requestId = _session->api().request(MTPmessages_RequestWebView(
+	_requestId = _api.request(MTPmessages_RequestWebView(
 		MTP_flags(Flag::f_theme_params
 			| (_context.fullscreen ? Flag::f_fullscreen : Flag(0))
 			| (_button.url.isEmpty() ? Flag(0) : Flag::f_url)
@@ -1250,7 +1247,7 @@ void WebViewInstance::requestButton() {
 
 void WebViewInstance::requestSimple() {
 	using Flag = MTPmessages_RequestSimpleWebView::Flag;
-	_requestId = _session->api().request(MTPmessages_RequestSimpleWebView(
+	_requestId = _api.request(MTPmessages_RequestSimpleWebView(
 		MTP_flags(Flag::f_theme_params
 			| (_context.fullscreen ? Flag::f_fullscreen : Flag(0))
 			| (v::is<WebViewSourceSwitch>(_source)
@@ -1278,7 +1275,7 @@ void WebViewInstance::requestSimple() {
 
 void WebViewInstance::requestMain() {
 	using Flag = MTPmessages_RequestMainWebView::Flag;
-	_requestId = _session->api().request(MTPmessages_RequestMainWebView(
+	_requestId = _api.request(MTPmessages_RequestMainWebView(
 		MTP_flags(Flag::f_theme_params
 			| (_context.fullscreen ? Flag::f_fullscreen : Flag(0))
 			| (_button.startCommand.isEmpty()
@@ -1315,7 +1312,7 @@ void WebViewInstance::requestApp(bool allowWrite) {
 		| (_context.fullscreen ? Flag::f_fullscreen : Flag(0))
 		| (_appStartParam.isEmpty() ? Flag(0) : Flag::f_start_param)
 		| (allowWrite ? Flag::f_write_allowed : Flag(0));
-	_requestId = _session->api().request(MTPmessages_RequestAppWebView(
+	_requestId = _api.request(MTPmessages_RequestAppWebView(
 		MTP_flags(flags),
 		_context.action->history->peer->input(),
 		MTP_inputBotAppID(MTP_long(app->id), MTP_long(app->accessHash)),
@@ -1333,6 +1330,26 @@ void WebViewInstance::requestApp(bool allowWrite) {
 		if (error.type() == u"BOT_INVALID"_q) {
 			_session->attachWebView().requestBots();
 		}
+		close();
+	}).send();
+}
+
+void WebViewInstance::requestChatJoin() {
+	const auto &join = v::get<WebViewSourceJoinChat>(_source);
+	using Flag = MTPmessages_RequestChatJoinWebView::Flag;
+	_requestId = _api.request(MTPmessages_RequestChatJoinWebView(
+		MTP_flags(Flag::f_theme_params),
+		MTP_long(join.queryId),
+		MTP_dataJSON(MTP_bytes(botThemeParams().json)),
+		MTP_string("tdesktop")
+	)).done([=](const MTPWebViewResult &result) {
+		_requestId = 0;
+		show({
+			.result = ParseWebViewResult(result),
+		});
+	}).fail([=](const MTP::Error &error) {
+		_requestId = 0;
+		_parentShow->showToast(error.type());
 		close();
 	}).send();
 }
@@ -1528,8 +1545,8 @@ void WebViewInstance::started(uint64 queryId) {
 		kProlongTimeout
 	) | rpl::on_next([=] {
 		using Flag = MTPmessages_ProlongWebView::Flag;
-		_session->api().request(base::take(_prolongId)).cancel();
-		_prolongId = _session->api().request(MTPmessages_ProlongWebView(
+		_api.request(base::take(_prolongId)).cancel();
+		_prolongId = _api.request(MTPmessages_ProlongWebView(
 			MTP_flags(Flag(0)
 				| (action.replyTo ? Flag::f_reply_to : Flag(0))
 				| (action.options.sendAs ? Flag::f_send_as : Flag(0))
@@ -1644,13 +1661,14 @@ auto WebViewInstance::nonPanelPaymentFormFactory(
 	using namespace Payments;
 	const auto panel = base::make_weak(_panel.get());
 	const auto weak = _context.controller;
+	const auto show = uiShow();
 	return [=](Payments::NonPanelPaymentForm form) {
 		using CreditsFormDataPtr = std::shared_ptr<CreditsFormData>;
 		using CreditsReceiptPtr = std::shared_ptr<CreditsReceiptData>;
 		v::match(form, [&](const CreditsFormDataPtr &form) {
 			if (const auto strong = panel.get()) {
 				ProcessCreditsPayment(
-					uiShow(),
+					show,
 					strong->toastParent().get(),
 					form,
 					reactivate);
@@ -1660,7 +1678,9 @@ auto WebViewInstance::nonPanelPaymentFormFactory(
 				ProcessCreditsReceipt(controller, receipt, reactivate);
 			}
 		}, [&](RealFormPresentedNotification) {
-			_panel->hideForPayment();
+			if (const auto strong = panel.get()) {
+				strong->hideForPayment();
+			}
 		});
 	};
 }
@@ -1808,7 +1828,7 @@ void WebViewInstance::botSwitchInlineQuery(
 }
 
 void WebViewInstance::botCheckWriteAccess(Fn<void(bool allowed)> callback) {
-	_session->api().request(MTPbots_CanSendMessage(
+	_api.request(MTPbots_CanSendMessage(
 		_bot->inputUser()
 	)).done([=](const MTPBool &result) {
 		callback(mtpIsTrue(result));
@@ -1915,7 +1935,8 @@ void WebViewInstance::botSendPreparedMessage(
 		callback(u"UNKNOWN_ERROR"_q);
 		return;
 	}
-	_session->api().request(MTPmessages_GetPreparedInlineMessage(
+	const auto show = uiShow();
+	_api.request(MTPmessages_GetPreparedInlineMessage(
 		bot->inputUser(),
 		MTP_string(request.id)
 	)).done([=](const MTPmessages_PreparedInlineMessage &result) {
@@ -2034,7 +2055,7 @@ void WebViewInstance::botSendPreparedMessage(
 					}
 				};
 				const auto checked = state->sendPayment.check(
-					uiShow(),
+					show,
 					strong->peer(),
 					options,
 					1,
@@ -2069,7 +2090,7 @@ void WebViewInstance::botRequestChat(
 		return;
 	}
 	const auto show = uiShow();
-	bot->session().api().request(MTPbots_GetRequestedWebViewButton(
+	_api.request(MTPbots_GetRequestedWebViewButton(
 		bot->inputUser(),
 		MTP_string(requestId)
 	)).done([show, bot, callback, requestId](
@@ -2190,7 +2211,7 @@ void WebViewInstance::botDownloadFile(
 		});
 		callback(true);
 	};
-	_session->api().request(MTPbots_CheckDownloadFileParams(
+	_api.request(MTPbots_CheckDownloadFileParams(
 		_bot->inputUser(),
 		MTP_string(request.name),
 		MTP_string(request.url)
@@ -2862,7 +2883,10 @@ void ChooseAndSendLocation(
 	};
 	const auto state = std::make_shared<State>();
 	state->send = [=](Data::InputVenue venue, Api::SendAction action) {
-		if (const auto strong = weak.get()) {
+		const auto strong = weak.get();
+		const auto ephemeralReply = session->ephemeralMessages()
+			.isEphemeralBotReply(action.replyTo.messageId);
+		if (strong && !ephemeralReply) {
 			const auto withPaymentApproved = [=](int stars) {
 				if (const auto onstack = state->send) {
 					auto copy = action;
@@ -2910,7 +2934,9 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 		not_null<PeerData*> peer,
 		Fn<Api::SendAction()> actionFactory,
 		Fn<SendMenu::Details()> sendMenuDetails,
-		Fn<void(bool)> attach) {
+		Fn<void(bool)> attach,
+		Fn<TextWithTags()> composeFieldText,
+		Fn<void()> composeFieldMigrated) {
 	auto result = std::make_unique<Ui::DropdownMenu>(
 		parent,
 		st::dropdownMenuWithIcons);
@@ -2969,23 +2995,33 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 				sendMenuDetails());
 		}, &st::menuIconCreateTodoList);
 	}
-#ifdef TDESKTOP_IV_EDITOR
-	if (Data::CanSendAnyOf(peer, ChatRestriction::SendOther, false)) {
+	if (Iv::Editor::CanAuthorRichMessages(&controller->session())
+		&& Data::CanSendAnyOf(peer, ChatRestriction::SendOther, false)) {
 		raw->addAction(tr::lng_article_menu_item(tr::now), [=] {
+			const auto action = actionFactory();
+			if (ShowEphemeralReplyTextOnlyError(
+					controller->uiShow(),
+					&controller->session(),
+					action.replyTo.messageId)) {
+				return;
+			}
+			const auto details = sendMenuDetails();
 			Iv::Editor::ShowComposeBox(
 				controller,
 				peer,
-				actionFactory(),
-				sendMenuDetails);
+				action,
+				details,
+				composeFieldText ? composeFieldText() : TextWithTags(),
+				composeFieldMigrated);
 		}, &st::menuIconArticle);
 	}
-#endif // TDESKTOP_IV_EDITOR
 	const auto session = &controller->session();
 	const auto locationType = ChatRestriction::SendOther;
 	const auto config = ResolveMapsConfig(session);
 	if (Data::CanSendAnyOf(peer, locationType, false)
 		&& Ui::LocationPicker::Available(config)) {
 		raw->addAction(tr::lng_maps_point(tr::now), [=] {
+			Ui::PreventDelayedActivation();
 			ChooseAndSendLocation(controller, config, actionFactory());
 		}, &st::menuIconAddress);
 	}

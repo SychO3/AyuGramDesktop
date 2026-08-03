@@ -190,7 +190,7 @@ struct WebViewResultData {
 	const MTPWebViewResult &result);
 
 struct WebViewSourceJoinChat {
-	WebViewResultData result;
+	uint64 queryId = 0;
 
 	friend inline bool operator==(
 		const WebViewSourceJoinChat &,
@@ -264,6 +264,7 @@ private:
 	void requestSimple();
 	void requestMain();
 	void requestApp(bool allowWrite);
+	void requestChatJoin();
 	void requestWithMainMenuDisclaimer();
 	void requestWithMenuAdd();
 	void maybeChooseAndRequestButton(PeerTypes supported);
@@ -341,6 +342,13 @@ private:
 	const WebViewContext _context;
 	const WebViewButton _button;
 	const WebViewSource _source;
+
+	// Requests that only drive this instance's own UI go through _api, so
+	// that they are cancelled when the instance is destroyed. Requests that
+	// must reach the server even if the mini app closes (sending data,
+	// granting permissions) are sent through _session->api() instead and
+	// must not touch anything owned by this instance in their handlers.
+	MTP::Sender _api;
 
 	std::optional<ShowArgs> _botFullWaitingArgs;
 
@@ -494,7 +502,9 @@ private:
 	not_null<PeerData*> peer,
 	Fn<Api::SendAction()> actionFactory,
 	Fn<SendMenu::Details()> sendMenuDetails,
-	Fn<void(bool)> attach);
+	Fn<void(bool)> attach,
+	Fn<TextWithTags()> composeFieldText = nullptr,
+	Fn<void()> composeFieldMigrated = nullptr);
 
 class MenuBotIcon final : public Ui::RpWidget {
 public:
