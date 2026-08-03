@@ -16,7 +16,7 @@ concurrency:
 jobs:
   macos:
     name: macOS arm64
-    runs-on: macos-latest
+    runs-on: macos-15-arm64
 
     env:
       PREPARE_PATH: "Telegram/build/prepare/prepare.py"
