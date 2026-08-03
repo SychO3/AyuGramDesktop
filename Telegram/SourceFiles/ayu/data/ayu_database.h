@@ -21,6 +21,9 @@ namespace AyuDatabase {
 
 void initialize();
 
+// Flush any pending deleted/edited inserts. Safe to call often; no-op when empty.
+void flushPendingWrites();
+
 void addEditedMessage(const EditedMessage &message);
 std::vector<EditedMessage> getEditedMessages(ID userId, ID dialogId, ID messageId, ID minId, ID maxId, int totalLimit);
 bool hasRevisions(ID userId, ID dialogId, ID messageId);
