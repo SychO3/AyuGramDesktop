@@ -479,7 +479,7 @@ win:
         mingw-w64-x86_64-gperf ^
         mingw-w64-x86_64-perl ^
         mingw-w64-x86_64-pkgconf
-    bash -c "pacman -S --needed --noconfirm mingw-w64-x86_64-nasm=3.01-1"
+    bash -c "pacman -U --noconfirm https://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-nasm-3.01-1-any.pkg.tar.zst"
 """, 'ThirdParty')
 
 stage('python', """
