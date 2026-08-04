@@ -477,9 +477,9 @@ win:
         make ^
         mingw-w64-x86_64-diffutils ^
         mingw-w64-x86_64-gperf ^
-        mingw-w64-x86_64-nasm ^
         mingw-w64-x86_64-perl ^
         mingw-w64-x86_64-pkgconf
+    bash -c "pacman -S --needed --noconfirm mingw-w64-x86_64-nasm=3.01-1"
 """, 'ThirdParty')
 
 stage('python', """
